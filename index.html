@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rally Pace Log v1.4</title>
+    <title>Rally Pace Log v1.6</title>
     <style>
         :root { --rally-red: #ff3131; --panel: #1a1a1a; --neon: #00ff00; }
         body { background: #000; color: #fff; font-family: -apple-system, sans-serif; padding: 20px; margin: 0; }
@@ -20,7 +20,7 @@
         .btn-group { display: flex; gap: 10px; margin-bottom: 20px; }
         .copy-btn { 
             background: #333; color: #fff; border: 1px solid #444; 
-            padding: 10px; border-radius: 8px; flex-grow: 1; font-size: 0.9rem;
+            padding: 10px; border-radius: 8px; flex-grow: 1; font-size: 0.9rem; cursor: pointer;
         }
 
         .entry-card { background: var(--panel); padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #333; }
@@ -31,33 +31,35 @@
         }
         .log-btn { 
             width: 100%; background: var(--rally-red); border: none; 
-            padding: 16px; color: #fff; font-weight: bold; border-radius: 8px; font-size: 1.1rem;
+            padding: 16px; color: #fff; font-weight: bold; border-radius: 8px; font-size: 1.1rem; cursor: pointer;
         }
 
         .results-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th { text-align: left; color: #666; text-transform: uppercase; padding: 10px; font-size: 0.7rem; }
-        td { padding: 12px 10px; border-bottom: 1px solid #222; }
+        th { text-align: left; color: #444; font-size: 0.6rem; text-transform: uppercase; padding-bottom: 5px; }
+        td { padding: 12px 5px; border-bottom: 1px solid #222; vertical-align: middle; }
         .sec-mile { color: var(--neon); font-weight: bold; font-family: monospace; }
-        .del-btn { color: #444; font-size: 1.2rem; cursor: pointer; float: right; }
+        .mph-val { color: #aaa; font-size: 0.8rem; }
+        .del-btn { color: #ff3131; font-size: 1.2rem; cursor: pointer; text-align: right; }
     </style>
 </head>
 <body>
 
-    <h2 style="letter-spacing: -1px; margin-bottom: 15px;">STAGE LOG <span style="color:var(--rally-red)">v1.4</span></h2>
+    <h2 style="letter-spacing: -1px; margin-bottom: 15px;">STAGE LOG <span style="color:var(--rally-red)">v1.6</span></h2>
 
     <div class="summary-bar">
         <div class="sum-box">
-            <span class="sum-label">Event Miles</span>
+            <span class="sum-label">Total Miles</span>
             <span class="sum-val" id="total-event-miles">0.0</span>
         </div>
         <div class="sum-box">
-            <span class="sum-label">Avg Pace</span>
-            <span class="sum-val" id="total-event-pace">0.0</span>
+            <span class="sum-label">Avg Pace (min/m)</span>
+            <span class="sum-val" id="total-event-pace">0:00</span>
         </div>
     </div>
 
     <div class="btn-group">
         <button class="copy-btn" onclick="copyToClipboard()">📋 Copy Summary</button>
+        <button class="copy-btn" style="background:#800;" onclick="clearAll()">🗑️ Clear All</button>
     </div>
 
     <div class="entry-card">
@@ -68,60 +70,100 @@
     </div>
 
     <table class="results-table">
+        <thead>
+            <tr>
+                <th>Stage/Time</th>
+                <th>Dist</th>
+                <th>Pace</th>
+                <th>MPH</th>
+                <th></th>
+            </tr>
+        </thead>
         <tbody id="logBody"></tbody>
     </table>
 
     <script>
         window.onload = loadLogs;
 
+        // Converts seconds (67.6) into a string (1:07.6)
+        function formatPace(totalSecondsPerMile) {
+            if (isNaN(totalSecondsPerMile) || totalSecondsPerMile === 0) return "0:00";
+            const mins = Math.floor(totalSecondsPerMile / 60);
+            const secs = (totalSecondsPerMile % 60).toFixed(1);
+            return `${mins}:${secs.padStart(4, '0')}`;
+        }
+
+        function parseTimeToSeconds(input) {
+            let cleanInput = input.trim().replace(/,/g, '.');
+            let mins = 0, secs = 0;
+            if (cleanInput.includes(':')) {
+                let parts = cleanInput.split(':');
+                mins = parseInt(parts[0]) || 0;
+                secs = parseFloat(parts[1]) || 0;
+            } else if (cleanInput.includes('.')) {
+                let parts = cleanInput.split('.');
+                mins = parseInt(parts[0]) || 0;
+                secs = parseFloat(parts[1]) || 0;
+            }
+            return (mins * 60) + secs;
+        }
+
         function loadLogs() {
             const saved = JSON.parse(localStorage.getItem('rallyLogs') || '[]');
             const body = document.getElementById('logBody');
             body.innerHTML = '';
             
-            let totalMi = 0; let totalSec = 0;
+            let totalMi = 0, totalSec = 0;
 
             [...saved].reverse().forEach((s, revIdx) => {
                 const actualIndex = saved.length - 1 - revIdx;
-                totalMi += parseFloat(s.dist);
-                const parts = s.timeStr.split(':');
-                totalSec += (parseInt(parts[0]) * 60) + parseFloat(parts[1]);
+                const mi = parseFloat(s.dist) || 0;
+                const sec = parseTimeToSeconds(s.timeStr);
+                
+                totalMi += mi;
+                totalSec += sec;
+
+                const paceSeconds = sec / mi;
+                const mph = mi > 0 ? ((mi / sec) * 3600).toFixed(1) : "0.0";
 
                 body.insertAdjacentHTML('beforeend', `
                     <tr>
-                        <td>${s.name}<br><small style="color:#666">${s.timeStr}</small></td>
-                        <td>${s.dist}m</td>
-                        <td class="sec-mile">${s.secondsPerMile} s/m</td>
-                        <td><span class="del-btn" onclick="deleteStage(${actualIndex})">×</span></td>
+                        <td><strong>${s.name}</strong><br><small style="color:#666">${s.timeStr}</small></td>
+                        <td>${mi.toFixed(2)}</td>
+                        <td class="sec-mile">${formatPace(paceSeconds)}</td>
+                        <td class="mph-val">${mph}</td>
+                        <td class="del-btn" onclick="deleteStage(${actualIndex})">×</td>
                     </tr>
                 `);
             });
 
             document.getElementById('total-event-miles').innerText = totalMi.toFixed(1);
-            document.getElementById('total-event-pace').innerText = totalMi > 0 ? (totalSec / totalMi).toFixed(1) : "0.0";
+            const avgPaceSec = totalMi > 0 ? (totalSec / totalMi) : 0;
+            document.getElementById('total-event-pace').innerText = formatPace(avgPaceSec);
         }
 
         function logStage() {
-            const name = document.getElementById('stageName').value;
-            const dist = parseFloat(document.getElementById('mileage').value);
-            const timeStr = document.getElementById('finishTime').value.replace('.', ':');
+            const nameEl = document.getElementById('stageName');
+            const distEl = document.getElementById('mileage');
+            const timeEl = document.getElementById('finishTime');
 
-            if (!name || isNaN(dist) || !timeStr.includes(':')) return alert("Incomplete Data");
+            const totalSeconds = parseTimeToSeconds(timeEl.value);
+            const dist = parseFloat(distEl.value);
 
-            const parts = timeStr.split(':');
-            const totalSeconds = (parseInt(parts[0]) * 60) + parseFloat(parts[1] || 0);
-            
+            if (!nameEl.value || isNaN(dist) || totalSeconds === 0) return alert("Incomplete Data");
+
             const stageData = { 
-                name, dist, timeStr, 
-                secondsPerMile: (totalSeconds / dist).toFixed(1),
-                avgMph: (dist / (totalSeconds / 3600)).toFixed(1)
+                name: nameEl.value, 
+                dist: dist, 
+                timeStr: timeEl.value.includes(':') ? timeEl.value : timeEl.value.replace('.', ':')
             };
 
             const saved = JSON.parse(localStorage.getItem('rallyLogs') || '[]');
             saved.push(stageData);
             localStorage.setItem('rallyLogs', JSON.stringify(saved));
             
-            document.querySelectorAll('input').forEach(i => i.value = '');
+            nameEl.value = ''; distEl.value = ''; timeEl.value = '';
+            nameEl.focus(); 
             loadLogs();
         }
 
@@ -132,26 +174,28 @@
             loadLogs();
         }
 
+        function clearAll() {
+            if(confirm("Clear all logs?")) {
+                localStorage.removeItem('rallyLogs');
+                loadLogs();
+            }
+        }
+
         function copyToClipboard() {
             const saved = JSON.parse(localStorage.getItem('rallyLogs') || '[]');
-            if (saved.length === 0) return alert("No data to copy");
+            if (saved.length === 0) return;
 
-            let totalMi = 0; let totalSec = 0;
-            let report = "🏎️ RALLY STAGE SUMMARY\n----------------------\n";
-
+            let totalMi = 0, totalSec = 0, report = "🏎️ RALLY SUMMARY\n";
             saved.forEach(s => {
-                report += `${s.name}: ${s.timeStr} (${s.dist}mi) - Pace: ${s.secondsPerMile} s/m\n`;
-                totalMi += parseFloat(s.dist);
-                const parts = s.timeStr.split(':');
-                totalSec += (parseInt(parts[0]) * 60) + parseFloat(parts[1]);
+                const mi = parseFloat(s.dist), sec = parseTimeToSeconds(s.timeStr);
+                const pace = formatPace(sec / mi), mph = ((mi / sec) * 3600).toFixed(1);
+                report += `${s.name}: ${s.timeStr} | ${mi}mi | Pace: ${pace} | ${mph}mph\n`;
+                totalMi += mi; totalSec += sec;
             });
 
-            const avgPace = (totalSec / totalMi).toFixed(1);
-            report += `----------------------\nTOTAL DISTANCE: ${totalMi.toFixed(1)} miles\nOVERALL PACE: ${avgPace} s/m`;
-
-            navigator.clipboard.writeText(report).then(() => {
-                alert("Report copied to clipboard!");
-            });
+            const avgPace = formatPace(totalSec / totalMi);
+            report += `------------------\nTOTAL: ${totalMi.toFixed(1)}mi | AVG PACE: ${avgPace}`;
+            navigator.clipboard.writeText(report).then(() => alert("Copied!"));
         }
     </script>
 </body>
