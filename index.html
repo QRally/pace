@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rally Pace Log v1.6</title>
+    <title>Rally Pace Log v1.8</title>
     <style>
         :root { --rally-red: #ff3131; --panel: #1a1a1a; --neon: #00ff00; }
         body { background: #000; color: #fff; font-family: -apple-system, sans-serif; padding: 20px; margin: 0; }
@@ -24,14 +24,21 @@
         }
 
         .entry-card { background: var(--panel); padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #333; }
+        .time-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        
+        /* Adjusted input sizing for mobile fitting */
         input { 
             width: 100%; background: #222; border: 1px solid #444; 
-            color: #fff; padding: 15px; font-size: 1.1rem; margin: 8px 0;
+            color: #fff; padding: 10px; font-size: 1rem; margin: 5px 0;
             border-radius: 8px; box-sizing: border-box;
         }
+        
+        /* Specific shrink for the side-by-side time boxes */
+        .time-row input { font-size: 0.9rem; padding: 10px 6px; }
+
         .log-btn { 
             width: 100%; background: var(--rally-red); border: none; 
-            padding: 16px; color: #fff; font-weight: bold; border-radius: 8px; font-size: 1.1rem; cursor: pointer;
+            padding: 16px; color: #fff; font-weight: bold; border-radius: 8px; font-size: 1.1rem; cursor: pointer; margin-top: 10px;
         }
 
         .results-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
@@ -44,7 +51,7 @@
 </head>
 <body>
 
-    <h2 style="letter-spacing: -1px; margin-bottom: 15px;">PACE LOG <span style="color:var(--rally-red)">v1.6</span></h2>
+    <h2 style="letter-spacing: -1px; margin-bottom: 15px;">PACE LOG <span style="color:var(--rally-red)">v1.8</span></h2>
 
     <div class="summary-bar">
         <div class="sum-box">
@@ -63,16 +70,19 @@
     </div>
 
     <div class="entry-card">
-        <input type="text" id="stageName" placeholder="Stage Name">
+        <input type="text" id="stageName" placeholder="Stage Name (e.g. SS1)">
         <input type="number" id="mileage" placeholder="Distance (miles)" step="0.01">
-        <input type="text" id="finishTime" placeholder="Time (MM:SS.ss)">
+        <div class="time-row">
+            <input type="text" id="startTime" placeholder="Start (HH:MM:SS)">
+            <input type="text" id="finishTime" placeholder="Finish (HH:MM:SS)">
+        </div>
         <button class="log-btn" onclick="logStage()">LOG STAGE</button>
     </div>
 
     <table class="results-table">
         <thead>
             <tr>
-                <th>Stage/Time</th>
+                <th>Stage/Dur</th>
                 <th>Dist</th>
                 <th>Pace</th>
                 <th>MPH</th>
@@ -85,27 +95,32 @@
     <script>
         window.onload = loadLogs;
 
-        // Converts seconds (67.6) into a string (1:07.6)
         function formatPace(totalSecondsPerMile) {
-            if (isNaN(totalSecondsPerMile) || totalSecondsPerMile === 0) return "0:00";
+            if (isNaN(totalSecondsPerMile) || totalSecondsPerMile <= 0 || !isFinite(totalSecondsPerMile)) return "0:00";
             const mins = Math.floor(totalSecondsPerMile / 60);
             const secs = (totalSecondsPerMile % 60).toFixed(1);
             return `${mins}:${secs.padStart(4, '0')}`;
         }
 
         function parseTimeToSeconds(input) {
-            let cleanInput = input.trim().replace(/,/g, '.');
-            let mins = 0, secs = 0;
-            if (cleanInput.includes(':')) {
-                let parts = cleanInput.split(':');
-                mins = parseInt(parts[0]) || 0;
-                secs = parseFloat(parts[1]) || 0;
-            } else if (cleanInput.includes('.')) {
-                let parts = cleanInput.split('.');
-                mins = parseInt(parts[0]) || 0;
-                secs = parseFloat(parts[1]) || 0;
+            if (!input) return 0;
+            let parts = input.trim().replace(/,/g, '.').split(':');
+            let sec = 0;
+            if (parts.length === 3) {
+                sec = (parseInt(parts[0]) * 3600) + (parseInt(parts[1]) * 60) + parseFloat(parts[2]);
+            } else if (parts.length === 2) {
+                sec = (parseInt(parts[0]) * 60) + parseFloat(parts[1]);
+            } else {
+                sec = parseFloat(parts[0]) || 0;
             }
-            return (mins * 60) + secs;
+            return sec;
+        }
+
+        function formatDuration(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = (seconds % 60).toFixed(2);
+            return h > 0 ? `${h}:${m}:${s.padStart(5, '0')}` : `${m}:${s.padStart(5, '0')}`;
         }
 
         function loadLogs() {
@@ -118,17 +133,17 @@
             [...saved].reverse().forEach((s, revIdx) => {
                 const actualIndex = saved.length - 1 - revIdx;
                 const mi = parseFloat(s.dist) || 0;
-                const sec = parseTimeToSeconds(s.timeStr);
+                const sec = parseFloat(s.durationSec) || 0;
                 
                 totalMi += mi;
                 totalSec += sec;
 
-                const paceSeconds = sec / mi;
-                const mph = mi > 0 ? ((mi / sec) * 3600).toFixed(1) : "0.0";
+                const paceSeconds = mi > 0 ? sec / mi : 0;
+                const mph = (mi > 0 && sec > 0) ? ((mi / sec) * 3600).toFixed(1) : "0.0";
 
                 body.insertAdjacentHTML('beforeend', `
                     <tr>
-                        <td><strong>${s.name}</strong><br><small style="color:#666">${s.timeStr}</small></td>
+                        <td><strong>${s.name}</strong><br><small style="color:#666">${formatDuration(sec)}</small></td>
                         <td>${mi.toFixed(2)}</td>
                         <td class="sec-mile">${formatPace(paceSeconds)}</td>
                         <td class="mph-val">${mph}</td>
@@ -145,24 +160,35 @@
         function logStage() {
             const nameEl = document.getElementById('stageName');
             const distEl = document.getElementById('mileage');
-            const timeEl = document.getElementById('finishTime');
+            const startEl = document.getElementById('startTime');
+            const finishEl = document.getElementById('finishTime');
 
-            const totalSeconds = parseTimeToSeconds(timeEl.value);
+            const sTime = parseTimeToSeconds(startEl.value);
+            const fTime = parseTimeToSeconds(finishEl.value);
             const dist = parseFloat(distEl.value);
 
-            if (!nameEl.value || isNaN(dist) || totalSeconds === 0) return alert("Incomplete Data");
+            let duration = fTime - sTime;
+            if (duration < 0) {
+                if (confirm("Finish time is before start. Crossing midnight?")) {
+                    duration += 86400;
+                } else {
+                    return;
+                }
+            }
+
+            if (!nameEl.value || isNaN(dist) || duration <= 0) return alert("Check inputs");
 
             const stageData = { 
                 name: nameEl.value, 
                 dist: dist, 
-                timeStr: timeEl.value.includes(':') ? timeEl.value : timeEl.value.replace('.', ':')
+                durationSec: duration
             };
 
             const saved = JSON.parse(localStorage.getItem('rallyLogs') || '[]');
             saved.push(stageData);
             localStorage.setItem('rallyLogs', JSON.stringify(saved));
             
-            nameEl.value = ''; distEl.value = ''; timeEl.value = '';
+            nameEl.value = ''; distEl.value = ''; startEl.value = ''; finishEl.value = '';
             nameEl.focus(); 
             loadLogs();
         }
@@ -187,9 +213,9 @@
 
             let totalMi = 0, totalSec = 0, report = "🏎️ RALLY SUMMARY\n";
             saved.forEach(s => {
-                const mi = parseFloat(s.dist), sec = parseTimeToSeconds(s.timeStr);
+                const mi = parseFloat(s.dist), sec = parseFloat(s.durationSec);
                 const pace = formatPace(sec / mi), mph = ((mi / sec) * 3600).toFixed(1);
-                report += `${s.name}: ${s.timeStr} | ${mi}mi | Pace: ${pace} | ${mph}mph\n`;
+                report += `${s.name}: ${formatDuration(sec)} | ${mi}mi | Pace: ${pace} | ${mph}mph\n`;
                 totalMi += mi; totalSec += sec;
             });
 
